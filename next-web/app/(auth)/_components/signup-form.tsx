@@ -1,3 +1,5 @@
+"use client"
+
 import { GalleryVerticalEnd } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -10,53 +12,202 @@ import {
   FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { toast } from "sonner"
+import { AxiosError } from "axios"
+import { AuthError } from "@/types/auth"
+import { SignupInput, signupSchema } from "./auth"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { register as registerUser } from "@/services/auth"
+import { useForm } from "react-hook-form"
+import { useRouter } from "next/navigation"
+import { signIn } from "next-auth/react"
+import ButtonGoogle from "./button-google"
+import Link from "next/link"
 
 export function SignupForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const router = useRouter()
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    setError,
+  } = useForm<SignupInput>({
+    resolver: zodResolver(signupSchema),
+  })
+
+  async function onSubmit(data: SignupInput) {
+    try {
+      const res = await registerUser({
+        username: data.username,
+        email: data.email,
+        password: data.password,
+        confirmPassword: data.confirmPassword,
+        displayName: data.displayName || undefined,
+      })
+
+      if (res.success) {
+        const signInResult = await signIn("credentials", {
+          accessToken: res.data.tokens.accessToken,
+          refreshToken: res.data.tokens.refreshToken,
+          redirect: false,
+        })
+
+        if (signInResult?.error) {
+          toast.error("Account created but login failed. Please sign in.")
+          return
+        }
+
+        sessionStorage.clear()
+
+        toast.success("Account created successfully!")
+        router.push("/dashboard")
+        router.refresh()
+      }
+    } catch (err: unknown) {
+      const axiosError = err as AxiosError<AuthError>
+      const serverErrors = axiosError.response?.data?.errors
+
+      if (serverErrors) {
+        const fieldMap: Record<string, keyof SignupInput> = {
+          username: "username",
+          email: "email",
+          password: "password",
+          confirmPassword: "confirmPassword",
+          displayName: "displayName",
+        }
+
+        for (const [field, messages] of Object.entries(serverErrors)) {
+          const mapped = fieldMap[field]
+          if (mapped) {
+            setError(mapped, { message: messages[0] })
+          }
+        }
+
+        const hasRootError = axiosError.response?.data?.message
+        if (hasRootError) {
+          setError("root", { message: hasRootError })
+        }
+      } else {
+        const message =
+          axiosError.response?.data?.message ||
+          "Registration failed. Please try again."
+        setError("root", { message })
+      }
+    }
+  }
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <form>
+      <form onSubmit={handleSubmit(onSubmit)}>
         <FieldGroup>
           <div className="flex flex-col items-center gap-2 text-center">
-            <a
-              href="#"
+            <Link
+              href="/"
               className="flex flex-col items-center gap-2 font-medium"
             >
               <div className="flex size-8 items-center justify-center rounded-md">
                 <GalleryVerticalEnd className="size-6" />
               </div>
               <span className="sr-only">Acme Inc.</span>
-            </a>
+            </Link>
             <h1 className="text-xl font-bold">Welcome to Acme Inc.</h1>
             <FieldDescription>
-              Already have an account? <a href="#">Sign in</a>
+              Already have an account? <Link href="/signin">Sign in</Link>
             </FieldDescription>
+            {errors.root && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 font-mono text-xs text-destructive">
+                {errors.root.message}
+              </div>
+            )}
           </div>
           <Field>
-            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <FieldLabel htmlFor="username">Username</FieldLabel>
+            <Input
+              id="username"
+              type="text"
+              placeholder="john_doe"
+              required
+              {...register("username")}
+              disabled={isSubmitting}
+            />
+            {errors.username && (
+              <span className="font-mono text-[10px] text-destructive">
+                {errors.username.message}
+              </span>
+            )}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="displayName">Display Name</FieldLabel>
+            <Input
+              id="displayName"
+              type="text"
+              placeholder="John Doe"
+              required
+              {...register("displayName")}
+              disabled={isSubmitting}
+            />
+            {errors.displayName && (
+              <span className="font-mono text-[10px] text-destructive">
+                {errors.displayName.message}
+              </span>
+            )}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="email">Email Address</FieldLabel>
             <Input
               id="email"
               type="email"
-              placeholder="m@example.com"
+              placeholder="john.doe@example.com"
               required
+              {...register("email")}
+              disabled={isSubmitting}
             />
+            {errors.email && (
+              <span className="font-mono text-[10px] text-destructive">
+                {errors.email.message}
+              </span>
+            )}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="password">Password</FieldLabel>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              required
+              {...register("password")}
+              disabled={isSubmitting}
+            />
+            {errors.password && (
+              <span className="font-mono text-[10px] text-destructive">
+                {errors.password.message}
+              </span>
+            )}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="confirmPassword">Confirm Password</FieldLabel>
+            <Input
+              id="confirmPassword "
+              type="password"
+              placeholder="••••••••"
+              required
+              {...register("confirmPassword")}
+              disabled={isSubmitting}
+            />
+            {errors.confirmPassword && (
+              <span className="font-mono text-[10px] text-destructive">
+                {errors.confirmPassword.message}
+              </span>
+            )}
           </Field>
           <Field>
             <Button type="submit">Create Account</Button>
           </Field>
           <FieldSeparator>Or</FieldSeparator>
           <Field className="grid gap-4">
-            <Button variant="outline" type="button">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                <path
-                  d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-                  fill="currentColor"
-                />
-              </svg>
-              Continue with Google
-            </Button>
+            <ButtonGoogle />
           </Field>
         </FieldGroup>
       </form>
